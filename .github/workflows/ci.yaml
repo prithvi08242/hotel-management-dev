@@ -57,4 +57,43 @@ jobs:
         working-directory: frontend
         run: yarn eslint src --max-warnings=0 
 
+  backend-test:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION}}
+          cache: "pip"
+          cache-dependency-path: ./backend/requirements.txt
+        
+      - name: Python Version
+        run: python --version
+          
+      - name: Install Backend Dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+
+      - name: Start backend app
+        working-directory: backend
+        run: |
+          nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+        
+      - name: Wait for backend
+        run: |
+          for i in {1..15}; do
+            curl -sf http://localhost:8000/api/health && break
+            sleep 2
+          done
+      
+      - name: Run Backend Tests
+        run: pytest tests/api --maxfail=1 --disable-warnings -q
+
+    
+      
+ 
       
