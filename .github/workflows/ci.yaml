@@ -89,6 +89,9 @@ jobs:
             curl -sf http://localhost:8000/api/health && break
             sleep 2
           done
+
+      - name: Install test dependencies
+        run: pip install pytest requests
       
       - name: Run Backend Tests
         run: pytest tests/api --maxfail=1 --disable-warnings -q
