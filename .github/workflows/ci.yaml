@@ -36,7 +36,8 @@ jobs:
         
       - name: Backend Flake8 Linting
         working-directory: backend
-        run: flake8 .
+        # Flake8's default limit is 79 chars, 88 matches Black's default, so the two tools agree.
+        run: flake8 . --max-line-length=88
         
       - name: Setup Node.js
         uses: actions/setup-node@v6
