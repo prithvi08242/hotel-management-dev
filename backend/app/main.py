@@ -46,5 +46,9 @@ def login(payload: LoginRequest):
     return {
         "access_token": token,
         "token_type": "bearer",
-        "user": {"email": user["email"], "full_name": user["full_name"], "role": user["role"]},
+        "user": {
+            "email": user["email"],
+            "full_name": user["full_name"],
+            "role": user["role"],
+        },
     }

@@ -7,13 +7,13 @@ actually needs relational guarantees.
 """
 
 FAKE_USERS = {
-    "guest@wayfarer.dev": {
-        "password": "Wayfarer@2026",
+    "guest@w.com": {
+        "password": "guest",
         "full_name": "Demo Guest",
         "role": "guest",
     },
-    "admin@wayfarer.dev": {
-        "password": "AdminPass@2026",
+    "admin@w.com": {
+        "password": "admin",
         "full_name": "Demo Admin",
         "role": "admin",
     },
