@@ -28,5 +28,8 @@
     "jest": "^30.4.2",
     "jest-environment-jsdom": "^30.4.1",
     "vite": "^5.4.8"
-  }
+  },
+  "jest": {
+  "testEnvironment": "jsdom"
+}
 }
