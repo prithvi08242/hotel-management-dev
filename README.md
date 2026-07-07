@@ -150,7 +150,25 @@ All four jobs must pass before merge is allowed.
 
 ---
 
-## 8. Repo split
+## 8. AWS resources
+
+- **ECR repos:** `hms-backend`, `hms-frontend`
+  (`442729101598.dkr.ecr.us-east-1.amazonaws.com`)
+- **IAM OIDC provider:** trusts `token.actions.githubusercontent.com`,
+  audience `sts.amazonaws.com`
+- **IAM role:** `hms-role`
+  (`arn:aws:iam::442729101598:role/hms-role`), scoped to
+  `prithvi08242/hotel-management-dev`, permission
+  `AmazonEC2ContainerRegistryPowerUser`
+- **GitHub secrets/vars set in this repo:** `AWS_ROLE_ARN` (secret),
+  `AWS_REGION` (variable)
+
+No long-lived AWS keys are stored anywhere — GitHub Actions assumes the
+role at runtime via OIDC, per run.
+
+---
+
+## 9. Repo split
 
 | Repo | Owns |
 |---|---|
