@@ -36,9 +36,7 @@ export default [
   },
   {
     files: ["**/*.test.jsx", "**/*.test.js"],
-    languageOptions: {
-      globals: { ...globals.jest },
-    },
+    languageOptions: { globals: { ...globals.jest } },
   },
   { ignores: ["build/", "node_modules/", "dist/"] },
 ];

@@ -19,9 +19,6 @@ jobs:
           cache: "pip"
           cache-dependency-path: ./backend/requirements.txt
 
-      - name: Python Version
-        run: python --version
-
       - name: Install Backend Dependencies
         working-directory: backend
         run: pip install -r requirements.txt
@@ -35,7 +32,6 @@ jobs:
 
       - name: Backend Flake8 Linting
         working-directory: backend
-        # Flake8's default limit is 79 chars, 88 matches Black's default, so the two tools agree.
         run: flake8 . --max-line-length=88
 
       - name: Setup Node.js
@@ -44,9 +40,6 @@ jobs:
           node-version: ${{ env.NODE_VERSION}}
           cache: "yarn"
           cache-dependency-path: ./frontend/yarn.lock
-
-      - name: Node version
-        run: node --version
 
       - name: Install Frontend Dependencies
         working-directory: frontend
@@ -59,6 +52,20 @@ jobs:
   backend-test:
     needs: lint
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: wayfarer
+          POSTGRES_PASSWORD: wayfarer_dev_pw
+          POSTGRES_DB: wayfarer
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U wayfarer"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Checkout Code
         uses: actions/checkout@v6
@@ -70,15 +77,20 @@ jobs:
           cache: "pip"
           cache-dependency-path: ./backend/requirements.txt
 
-      - name: Python Version
-        run: python --version
-
       - name: Install Backend Dependencies
         working-directory: backend
         run: pip install -r requirements.txt
 
+      - name: Run migrations
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://wayfarer:wayfarer_dev_pw@localhost:5432/wayfarer
+        run: alembic upgrade head
+
       - name: Start backend app
         working-directory: backend
+        env:
+          DATABASE_URL: postgresql://wayfarer:wayfarer_dev_pw@localhost:5432/wayfarer
         run: |
           nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 &
 
@@ -108,9 +120,6 @@ jobs:
           node-version: ${{ env.NODE_VERSION}}
           cache: "yarn"
           cache-dependency-path: ./frontend/yarn.lock
-
-      - name: Node version
-        run: node --version
 
       - name: Install Frontend Dependencies
         working-directory: frontend
@@ -152,3 +161,4 @@ jobs:
           context: ./frontend
           push: true
           tags: ${{ steps.ecr-login.outputs.registry }}/hms-frontend:${{ github.event.pull_request.head.sha }}
+          

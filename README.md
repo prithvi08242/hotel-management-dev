@@ -1,62 +1,215 @@
-# Wayfarer — Login page
+# Wayfarer — Hotel Management System
 
-**Status:** Step 1 of the dev repo roadmap. This is the *only* page in this
-increment — no DB, no Docker, no CI. Those belong in the separate SDET repo
-and get added incrementally, page by page.
+A portfolio project pairing a real hotel booking application with a full
+SDET/DevOps pipeline, built incrementally across two repos.
 
-## What's here
+---
 
-- **Backend** (`backend/`): FastAPI app with two endpoints:
-  - `GET /api/health` — plain health check
-  - `POST /api/login` — accepts `{ email, password }`, returns a JWT + user
-    info on success, `401` on failure
-  - Users are stored **in memory** (`backend/app/auth.py`) — no database yet.
-    This is deliberate: auth logic gets proven correct first, persistence
-    gets added later when a feature (bookings) actually needs it.
+## 1. What's built
 
-- **Frontend** (`frontend/`): One page, `src/pages/LoginPage.jsx` — an email
-  + password form with three visible states (idle/error, loading, success),
-  each carrying a `data-testid` for E2E automation:
+| Feature | Status |
+|---|---|
+| Login | ✅ |
+| Signup | ✅ |
+| Room search & listing | ✅ |
+| Booking creation / cancellation | ✅ |
+| Admin dashboard | ✅ |
+| EKS cluster + staging deploy | ⬜ |
+| E2E wired into CI against real staging URL | ⬜ |
+| Go/no-go gate | ⬜ |
+| Production deploy (HA, self-healing) | ⬜ |
+| Custom domain | ⬜ |
 
-  | Element | `data-testid` |
-  |---|---|
-  | Whole page | `login-page` |
-  | Form | `login-form` |
-  | Email field | `email-input` |
-  | Password field | `password-input` |
-  | Submit button | `login-button` |
-  | Error message | `login-error` |
-  | Success view | `login-success` |
-  | Signed-in role | `logged-in-role` |
+---
 
-## Seeded test accounts
+## 2. Stack
+
+- **Backend:** FastAPI, SQLAlchemy, Alembic migrations, PostgreSQL
+- **Frontend:** React + Vite + React Router
+- **Auth:** JWT, sent as `Authorization: Bearer <token>`
+- **CI/CD:** GitHub Actions, AWS ECR (via OIDC, no stored keys)
+
+---
+
+## 3. Backend reference
+
+Schema is migration-managed (`backend/alembic/versions/` — three
+migrations: users, rooms, bookings).
+
+| Endpoint | Auth | Notes |
+|---|---|---|
+| `GET /api/health` | none | health check |
+| `POST /api/signup` | none | creates a guest account, returns JWT |
+| `POST /api/login` | none | returns JWT + user info |
+| `GET /api/rooms` | none | filter by type, price, occupancy, dates |
+| `POST /api/bookings` | required | rejects overlapping dates |
+| `GET /api/bookings/me` | required | current user's bookings |
+| `DELETE /api/bookings/{id}` | required (owner) | cancels a booking |
+| `GET /api/admin/bookings` | required (admin) | all bookings |
+| `POST /api/admin/rooms` | required (admin) | add a room |
+
+---
+
+## 4. Frontend reference
+
+Ticket-stub styled room cards, persistent nav bar. Every interactive
+element carries a `data-testid` for E2E automation.
+
+| Route | Page | Protected |
+|---|---|---|
+| `/login` | Sign in | no |
+| `/signup` | Create account | no |
+| `/rooms` | Search & browse rooms | no |
+| `/book/:roomId` | Confirm a booking | yes |
+| `/my-bookings` | View / cancel bookings | yes |
+| `/admin` | Stats, add rooms, view all bookings | yes (admin) |
+
+---
+
+## 5. Seeded test accounts
 
 | Email | Password | Role |
 |---|---|---|
-| `guest@wayfarer.dev` | `Wayfarer@2026` | guest |
-| `admin@wayfarer.dev` | `AdminPass@2026` | admin |
+| `guest@w.com` | `guest` | guest |
+| `admin@w.com` | `admin` | admin |
 
-## Running it locally
+---
 
-Backend:
+## 6. Local setup
+
+### Image names (consistent everywhere)
+- `hms-back-img` — backend
+- `hms-front-img` — frontend
+
+*(ECR uses different names — `hms-backend` / `hms-frontend` — that's fine;
+`docker-compose.yml` never talks to ECR directly, only CI's
+`build-and-push` job does.)*
+
+### One-time: build images
 ```bash
 cd backend
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+docker build -t hms-back-img .
+
+cd ../frontend
+docker build -t hms-front-img .
 ```
 
-Frontend:
+### Run everything — one command
 ```bash
-cd frontend
-yarn install
-yarn dev
+docker compose up
+```
+This starts Postgres, runs `alembic upgrade head` automatically inside the
+backend container before it starts, and starts the frontend. No manual
+migration step needed.
+
+Open `http://localhost:5173` (or whichever port Vite's log shows — always
+use the `Local:` URL, never the `Network:` one from your browser).
+
+### Verify end to end
+1. Sign up, or log in with a seeded account
+2. Search rooms, book one
+3. View it under **My bookings**, cancel it
+4. Log in as admin, confirm it shows in the **Admin dashboard**
+
+### Shutting down
+```bash
+docker compose down          # stop containers
+docker compose down -v       # also wipe Postgres data
 ```
 
-Open http://localhost:5173 — try both seeded accounts, and try a wrong
-password to see the error state.
+### Genuine clean slate (only if something's broken)
+```bash
+docker compose down -v
+lsof -ti:8000 | xargs kill -9 2>/dev/null
+lsof -ti:5173 | xargs kill -9 2>/dev/null
+lsof -ti:5174 | xargs kill -9 2>/dev/null
+lsof -ti:5432 | xargs kill -9 2>/dev/null
 
-## Not in scope for this page
+cd backend && docker build --no-cache -t hms-back-img . && cd ..
+cd frontend && docker build --no-cache -t hms-front-img . && cd ..
 
-Docker, docker-compose, GitHub Actions, and Playwright tests are being built
-separately in the SDET repo, against this code, as its own learning track.
+docker compose up
+```
+
+---
+
+## 7. CI pipeline (`.github/workflows/ci.yml`)
+
+Triggered on `pull_request` → `main` — this is the go/no-go gate before merge:
+
+```
+lint (black, flake8, eslint)
+  ↓
+backend-test (Postgres service + alembic upgrade + pytest)
+frontend-test (Jest)
+  ↓
+build-and-push (assumes AWS role via OIDC, pushes to ECR)
+```
+
+All four jobs must pass before merge is allowed.
+
+---
+
+## 8. AWS resources
+
+- **ECR repos:** `hms-backend`, `hms-frontend`
+  (`442729101598.dkr.ecr.us-east-1.amazonaws.com`)
+- **IAM OIDC provider:** trusts `token.actions.githubusercontent.com`,
+  audience `sts.amazonaws.com`
+- **IAM role:** `hms-role`
+  (`arn:aws:iam::442729101598:role/hms-role`), scoped to
+  `prithvi08242/hotel-management-dev`, permission
+  `AmazonEC2ContainerRegistryPowerUser`
+- **GitHub secrets/vars set in this repo:** `AWS_ROLE_ARN` (secret),
+  `AWS_REGION` (variable)
+
+No long-lived AWS keys are stored anywhere — GitHub Actions assumes the
+role at runtime via OIDC, per run.
+
+---
+
+## 9. Live pipeline dashboard
+
+`pipeline-flow.html` (lives in `hms-test`) — one page rendering the entire
+pipeline as a vertical flowchart, colored live (gray/amber/green/red) by
+polling the GitHub Actions API every 5 seconds across **both** repos, with
+per-job and per-step status and duration. Auto-deployed to GitHub Pages on
+every push to `main` in `hms-test` that touches this file
+(`.github/workflows/monitoring-ci.yml`).
+
+**Live URL:** https://prithvi08242.github.io/hotel-managment-test/
+
+---
+
+## 10. Repo split
+
+| Repo | Owns |
+|---|---|
+| `hms-dev` (this repo) | Application code, Dockerfiles, CI pipeline |
+| `hms-test` | Playwright E2E specs, live pipeline dashboard |
+
+`docker-compose.yml` is intentionally kept in both repos — update both if
+it changes.
+
+---
+
+## 11. Linting locally
+
+`backend/setup.cfg` sets flake8's line length to 88 (matching Black) and
+excludes `.venv/` from being scanned:
+
+```ini
+[flake8]
+max-line-length = 88
+exclude = .venv,venv,__pycache__,.git,build,dist
+```
+
+Run from inside `backend/`:
+```bash
+black --check .   # formatting
+flake8 .          # style/lint
+```
+
+Without this file, flake8 defaults to a 79-char limit and will also scan
+your virtual environment's installed packages — producing hundreds of
+irrelevant errors unrelated to your actual code.

@@ -1,20 +1,22 @@
 import { useState } from "react";
-import { login } from "../api";
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 function LoginPage() {
+  const { login } = useAuth();
+  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [user, setUser] = useState(null);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
     try {
-      const data = await login(email, password);
-      setUser(data.user);
+      await login(email, password);
+      navigate("/rooms");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -22,17 +24,8 @@ function LoginPage() {
     }
   };
 
-  if (user) {
-    return (
-      <section className="login-page" data-testid="login-success">
-        <h1>Welcome, {user.full_name}</h1>
-        <p data-testid="logged-in-role">Signed in as {user.role}</p>
-      </section>
-    );
-  }
-
   return (
-    <section className="login-page" data-testid="login-page">
+    <section className="auth-page" data-testid="login-page">
       <h1>Sign in to Wayfarer</h1>
 
       <form data-testid="login-form" onSubmit={handleSubmit}>
@@ -66,6 +59,10 @@ function LoginPage() {
           </p>
         )}
       </form>
+
+      <p className="auth-switch">
+        New here? <Link to="/signup" data-testid="go-to-signup">Create an account</Link>
+      </p>
     </section>
   );
 }

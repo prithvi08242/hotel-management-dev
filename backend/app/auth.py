@@ -1,27 +1,52 @@
-"""
-In-memory user store for the login page.
+from datetime import datetime, timedelta, timezone
 
-This is intentionally NOT a database. The login flow is being proven out
-first; persistence gets added later (see project README) once a feature
-actually needs relational guarantees.
-"""
+from fastapi import Depends, HTTPException, Header
+from jose import jwt, JWTError
+from sqlalchemy.orm import Session
 
-FAKE_USERS = {
-    "guest@w.com": {
-        "password": "guest",
-        "full_name": "Demo Guest",
-        "role": "guest",
-    },
-    "admin@w.com": {
-        "password": "admin",
-        "full_name": "Demo Admin",
-        "role": "admin",
-    },
-}
+from app.database import get_db
+from app.models import User
+
+JWT_SECRET = "dev-only-secret-do-not-use-in-prod"
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRY_MINUTES = 60
 
 
-def authenticate(email: str, password: str):
-    user = FAKE_USERS.get(email)
-    if user is None or user["password"] != password:
+def create_access_token(email: str, role: str) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(minutes=JWT_EXPIRY_MINUTES)
+    return jwt.encode(
+        {"sub": email, "role": role, "exp": expire}, JWT_SECRET, algorithm=JWT_ALGORITHM
+    )
+
+
+def authenticate(db: Session, email: str, password: str):
+    user = db.query(User).filter(User.email == email).first()
+    if user is None or user.password != password:
         return None
-    return {"email": email, "full_name": user["full_name"], "role": user["role"]}
+    return user
+
+
+def get_current_user(
+    authorization: str = Header(None), db: Session = Depends(get_db)
+) -> User:
+    if authorization is None or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=401, detail="Missing or invalid Authorization header"
+        )
+
+    token = authorization.split(" ", 1)[1]
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    user = db.query(User).filter(User.email == payload.get("sub")).first()
+    if user is None:
+        raise HTTPException(status_code=401, detail="User not found")
+    return user
+
+
+def require_admin(user: User = Depends(get_current_user)) -> User:
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
