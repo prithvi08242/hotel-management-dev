@@ -5,7 +5,6 @@ from fastapi import FastAPI, HTTPException, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
 
 from app.database import get_db
 from app.models import User, Room, Booking
