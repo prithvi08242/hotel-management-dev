@@ -144,12 +144,11 @@ jobs:
         with:
           context: ./backend
           push: true
-          tags: ${{ steps.ecr-login.outputs.registry }}/hms-backend:${{ github.sha }}
+          tags: ${{ steps.ecr-login.outputs.registry }}/hms-backend:${{ github.event.pull_request.head.sha }}
 
       - name: Build & push frontend
         uses: docker/build-push-action@v6
         with:
           context: ./frontend
           push: true
-          tags: ${{ steps.ecr-login.outputs.registry }}/hms-frontend:${{ github.sha }}
-          
+          tags: ${{ steps.ecr-login.outputs.registry }}/hms-frontend:${{ github.event.pull_request.head.sha }}
