@@ -2,13 +2,11 @@ name: ci
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, closed]
 env:
     PYTHON_VERSION: "3.11"
     NODE_VERSION: "22"
 jobs:
   lint:
-    if: github.event.action != 'closed'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -59,7 +57,6 @@ jobs:
         run: yarn eslint src --max-warnings=0
 
   backend-test:
-    if: github.event.action != 'closed'
     needs: lint
     runs-on: ubuntu-latest
     steps:
@@ -99,7 +96,6 @@ jobs:
         run: pytest tests/api --maxfail=1 --disable-warnings -q
 
   frontend-test:
-    if: github.event.action != 'closed'
     needs: lint
     runs-on: ubuntu-latest
     steps:
@@ -125,21 +121,19 @@ jobs:
         run: yarn test --watchAll=false --passWithNoTests
 
   build-and-push:
-    if: github.event.action == 'closed' && github.event.pull_request.merged == true
+    needs: [backend-test, frontend-test]
     runs-on: ubuntu-latest
     permissions:
       id-token: write
       contents: read
     steps:
       - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.pull_request.merge_commit_sha }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ vars.AWS_REGION }}
 
       - name: Log in to ECR
         id: ecr-login
@@ -150,11 +144,11 @@ jobs:
         with:
           context: ./backend
           push: true
-          tags: ${{ steps.ecr-login.outputs.registry }}/hms-backend:${{ github.event.pull_request.merge_commit_sha }}
+          tags: ${{ steps.ecr-login.outputs.registry }}/hms-backend:${{ github.sha }}
 
       - name: Build & push frontend
         uses: docker/build-push-action@v6
         with:
           context: ./frontend
           push: true
-          tags: ${{ steps.ecr-login.outputs.registry }}/hms-frontend:${{ github.event.pull_request.merge_commit_sha }}
+          tags: ${{ steps.ecr-login.outputs.registry }}/hms-frontend:${{ github.sha }}
