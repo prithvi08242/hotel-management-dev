@@ -4,7 +4,9 @@ BASE_URL = "http://localhost:8000"
 
 
 def _login(email, password):
-    r = requests.post(f"{BASE_URL}/api/login", json={"email": email, "password": password})
+    r = requests.post(
+        f"{BASE_URL}/api/login", json={"email": email, "password": password}
+    )
     return r.json()["access_token"]
 
 
@@ -15,18 +17,23 @@ def test_health_check():
 
 
 def test_login_valid_guest():
-    r = requests.post(f"{BASE_URL}/api/login", json={"email": "guest@w.com", "password": "guest"})
+    r = requests.post(
+        f"{BASE_URL}/api/login", json={"email": "guest@w.com", "password": "guest"}
+    )
     assert r.status_code == 200
     assert r.json()["user"]["role"] == "guest"
 
 
 def test_login_wrong_password():
-    r = requests.post(f"{BASE_URL}/api/login", json={"email": "guest@w.com", "password": "wrong"})
+    r = requests.post(
+        f"{BASE_URL}/api/login", json={"email": "guest@w.com", "password": "wrong"}
+    )
     assert r.status_code == 401
 
 
 def test_signup_and_login():
     import uuid
+
     email = f"test-{uuid.uuid4().hex[:8]}@w.com"
     r = requests.post(
         f"{BASE_URL}/api/signup",
@@ -35,7 +42,9 @@ def test_signup_and_login():
     assert r.status_code == 200
     assert r.json()["user"]["role"] == "guest"
 
-    r2 = requests.post(f"{BASE_URL}/api/login", json={"email": email, "password": "pass123"})
+    r2 = requests.post(
+        f"{BASE_URL}/api/login", json={"email": email, "password": "pass123"}
+    )
     assert r2.status_code == 200
 
 

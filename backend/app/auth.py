@@ -30,7 +30,9 @@ def get_current_user(
     authorization: str = Header(None), db: Session = Depends(get_db)
 ) -> User:
     if authorization is None or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
+        raise HTTPException(
+            status_code=401, detail="Missing or invalid Authorization header"
+        )
 
     token = authorization.split(" ", 1)[1]
     try:

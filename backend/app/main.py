@@ -30,19 +30,44 @@ def seed_data():
     if db.query(User).count() == 0:
         db.add_all(
             [
-                User(email="guest@w.com", password="guest", full_name="Demo Guest", role="guest"),
-                User(email="admin@w.com", password="admin", full_name="Demo Admin", role="admin"),
+                User(
+                    email="guest@w.com",
+                    password="guest",
+                    full_name="Demo Guest",
+                    role="guest",
+                ),
+                User(
+                    email="admin@w.com",
+                    password="admin",
+                    full_name="Demo Admin",
+                    role="admin",
+                ),
             ]
         )
     if db.query(Room).count() == 0:
         db.add_all(
             [
-                Room(room_number="101", room_type="single", price_per_night=89.00,
-                     max_occupancy=1, description="Cozy single room with city view."),
-                Room(room_number="102", room_type="double", price_per_night=129.00,
-                     max_occupancy=2, description="Double room with queen bed."),
-                Room(room_number="201", room_type="suite", price_per_night=249.00,
-                     max_occupancy=4, description="Executive suite with lounge area."),
+                Room(
+                    room_number="101",
+                    room_type="single",
+                    price_per_night=89.00,
+                    max_occupancy=1,
+                    description="Cozy single room with city view.",
+                ),
+                Room(
+                    room_number="102",
+                    room_type="double",
+                    price_per_night=129.00,
+                    max_occupancy=2,
+                    description="Double room with queen bed.",
+                ),
+                Room(
+                    room_number="201",
+                    room_type="suite",
+                    price_per_night=249.00,
+                    max_occupancy=4,
+                    description="Executive suite with lounge area.",
+                ),
             ]
         )
     db.commit()
@@ -57,6 +82,7 @@ def health():
 # ---------------------------------------------------------------------
 # Auth
 # ---------------------------------------------------------------------
+
 
 class SignupRequest(BaseModel):
     email: str
@@ -77,7 +103,9 @@ def _user_response(user: User):
 def signup(payload: SignupRequest, db: Session = Depends(get_db)):
     existing = db.query(User).filter(User.email == payload.email).first()
     if existing:
-        raise HTTPException(status_code=409, detail="An account with this email already exists")
+        raise HTTPException(
+            status_code=409, detail="An account with this email already exists"
+        )
 
     user = User(
         email=payload.email,
@@ -106,6 +134,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------
 # Rooms
 # ---------------------------------------------------------------------
+
 
 def _room_response(room: Room):
     return {
@@ -157,6 +186,7 @@ def list_rooms(
 # Bookings
 # ---------------------------------------------------------------------
 
+
 class BookingRequest(BaseModel):
     room_id: int
     check_in: date
@@ -197,7 +227,9 @@ def create_booking(
         .first()
     )
     if overlap:
-        raise HTTPException(status_code=409, detail="Room is already booked for those dates")
+        raise HTTPException(
+            status_code=409, detail="Room is already booked for those dates"
+        )
 
     booking = Booking(
         user_id=current_user.id,
@@ -246,6 +278,7 @@ def cancel_booking(
 # ---------------------------------------------------------------------
 # Admin
 # ---------------------------------------------------------------------
+
 
 class RoomCreateRequest(BaseModel):
     room_number: str

@@ -5,6 +5,7 @@ Revises: 0002_create_rooms
 Create Date: 2026-07-07
 
 """
+
 from alembic import op
 import sqlalchemy as sa
 
@@ -23,7 +24,9 @@ def upgrade():
         sa.Column("check_in", sa.Date, nullable=False),
         sa.Column("check_out", sa.Date, nullable=False),
         sa.Column("status", sa.String, nullable=False, server_default="confirmed"),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
     )
 
 
