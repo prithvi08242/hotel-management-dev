@@ -120,7 +120,6 @@ jobs:
       - name: Run Frontend Tests
         working-directory: frontend
         run: yarn test --watchAll=false --passWithNoTests
-        
     
       
  
