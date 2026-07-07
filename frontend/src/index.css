@@ -1,92 +1,253 @@
+/* ---- Tokens ---- */
 :root {
   --navy: #1b2a4a;
+  --navy-deep: #101b30;
   --gold: #c9a227;
   --cream: #f7f7f5;
-  --ink: #1d1d1d;
+  --charcoal: #1d1d1d;
   --muted: #6b7280;
+  --sage: #4c6b4f;
   --error: #b3261e;
+  --border: #e5e5e0;
+
+  --font-display: "Fraunces", Georgia, serif;
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-body);
   background: var(--cream);
-  color: var(--ink);
+  color: var(--charcoal);
+  line-height: 1.5;
 }
 
+a { color: var(--navy); }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+/* ---- Header / Nav ---- */
 .app-header {
-  background: var(--navy);
-  padding: 1.25rem 2rem;
+  background: var(--navy-deep);
+  padding: 1.1rem 2rem;
 }
-
 .brand-mark {
+  font-family: var(--font-display);
   color: var(--gold);
-  font-size: 1.25rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.login-page {
-  max-width: 400px;
-  margin: 4rem auto;
-  padding: 2rem;
-  background: white;
-  border-radius: 8px;
-  border: 1px solid #e5e5e5;
-  border-top: 4px solid var(--gold);
-}
-
-.login-page h1 {
   font-size: 1.4rem;
-  margin-top: 0;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
-.login-page form {
+.nav-bar {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  background: var(--navy);
+  padding: 0.7rem 2rem;
+  font-size: 0.88rem;
+}
+.nav-bar a {
+  color: rgba(255, 255, 255, 0.85);
+  font-weight: 500;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+.nav-bar a:hover { color: var(--gold); }
+.nav-spacer { flex: 1; }
+.nav-bar span[data-testid="nav-user-info"] { color: rgba(255, 255, 255, 0.6); font-size: 0.85rem; }
+.nav-bar button {
+  background: transparent;
+  border: 1px solid var(--gold);
+  color: var(--gold);
+  padding: 0.35rem 0.9rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.nav-bar button:hover { background: var(--gold); color: var(--navy-deep); }
+
+main { max-width: 960px; margin: 0 auto; padding: 2.5rem 2rem; }
+
+/* ---- Hero ---- */
+.hero {
+  margin-bottom: 2rem;
+}
+.hero h1 {
+  font-family: var(--font-display);
+  font-size: 2.1rem;
+  font-weight: 600;
+  margin: 0 0 0.35rem;
+  color: var(--navy-deep);
+}
+.hero p.hero-sub {
+  color: var(--muted);
+  font-size: 0.95rem;
+  margin: 0;
+}
+.hero-stats {
+  display: flex;
+  gap: 2rem;
+  margin-top: 1.1rem;
+  padding-top: 1.1rem;
+  border-top: 1px dashed var(--border);
+}
+.hero-stat .num {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  color: var(--navy);
+  display: block;
+  line-height: 1;
+}
+.hero-stat .label {
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* ---- Forms (search, auth, booking, admin) ---- */
+.room-filters, .admin-page form {
+  display: flex; gap: 1.25rem; align-items: end; flex-wrap: wrap;
+  margin-bottom: 2rem; padding: 1.25rem; background: white;
+  border-radius: 10px; border: 1px solid var(--border);
+}
+.auth-page form, .booking-page form {
+  display: flex; flex-direction: column; gap: 0.9rem;
+}
+
+label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 0.3rem; font-weight: 500; }
+select, input {
+  padding: 0.55rem 0.7rem; border: 1px solid #ccc; border-radius: 6px;
+  font-family: var(--font-body); font-size: 0.92rem;
+}
+select:focus, input:focus { border-color: var(--navy); }
+
+button[type="submit"], .header-actions button {
+  background: var(--navy); color: white; border: none;
+  padding: 0.65rem 1.4rem; border-radius: 6px; cursor: pointer;
+  font-weight: 600; font-size: 0.92rem;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+button[type="submit"]:hover { background: var(--navy-deep); }
+button[type="submit"]:active { transform: scale(0.98); }
+button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* ---- Room cards: ticket-stub signature ---- */
+.room-cards { list-style: none; padding: 0; display: grid; gap: 1.1rem; }
+.room-card {
+  display: flex;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(27, 42, 74, 0.06);
+}
+.room-card .stub-main { flex: 1; padding: 1.25rem 1.4rem; }
+.room-card .stub-main h2 {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  margin: 0 0 0.4rem;
+  text-transform: capitalize;
+  color: var(--navy-deep);
+}
+.room-card .stub-main p { margin: 0.2rem 0; color: var(--muted); font-size: 0.88rem; }
+
+.room-card .stub-divider {
+  position: relative;
+  width: 0;
+  border-left: 2px dashed var(--border);
+  margin: 12px 0;
+}
+.room-card .stub-divider::before, .room-card .stub-divider::after {
+  content: "";
+  position: absolute;
+  left: -8px;
+  width: 16px;
+  height: 16px;
+  background: var(--cream);
+  border-radius: 50%;
+}
+.room-card .stub-divider::before { top: -12px; }
+.room-card .stub-divider::after { bottom: -12px; }
+
+.room-card .stub-price {
+  width: 170px;
+  padding: 1.25rem 1.4rem;
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 0.5rem;
 }
-
-.login-page label {
-  font-size: 0.8rem;
-  color: var(--muted);
-  margin-top: 0.75rem;
+.room-card .stub-price .price {
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  color: var(--navy);
 }
-
-.login-page input {
-  padding: 0.6rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 1rem;
-}
-
-.login-page button {
-  margin-top: 1.5rem;
-  background: var(--navy);
-  color: white;
-  border: none;
-  padding: 0.7rem;
-  border-radius: 4px;
+.room-card .stub-price .price span { font-size: 0.75rem; color: var(--muted); font-family: var(--font-body); }
+.room-card .stub-price a {
+  font-size: 0.85rem;
   font-weight: 600;
-  cursor: pointer;
+  color: white;
+  background: var(--gold);
+  padding: 0.4rem 0.8rem;
+  border-radius: 5px;
+  text-decoration: none;
 }
 
-.login-page button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+/* ---- Bookings list ---- */
+.booking-list { list-style: none; padding: 0; display: grid; gap: 1rem; }
+.booking-card {
+  background: white; border: 1px solid var(--border); border-left: 4px solid var(--gold);
+  border-radius: 8px; padding: 1.1rem 1.3rem;
+}
+.booking-card h2 { font-family: var(--font-display); font-size: 1.05rem; margin: 0 0 0.3rem; }
+[data-testid^="booking-status-"] { font-weight: 600; }
+[data-testid^="cancel-booking-"] {
+  margin-top: 0.6rem; background: white; border: 1px solid var(--error);
+  color: var(--error); padding: 0.35rem 0.8rem; border-radius: 5px; cursor: pointer;
 }
 
-.login-page button:hover:not(:disabled) {
-  background: #14213a;
+/* ---- Auth cards ---- */
+.auth-page, .booking-page {
+  max-width: 420px; margin: 2rem auto; padding: 2.2rem;
+  background: white; border-radius: 10px; border: 1px solid var(--border);
+  border-top: 4px solid var(--gold);
+  box-shadow: 0 2px 8px rgba(27, 42, 74, 0.06);
+}
+.auth-page h1, .booking-page h1 { font-family: var(--font-display); font-size: 1.5rem; margin-top: 0; }
+.auth-switch { font-size: 0.85rem; margin-top: 1.2rem; color: var(--muted); }
+
+/* ---- Admin stat cards ---- */
+.admin-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+.stat-card {
+  background: white; border: 1px solid var(--border); border-radius: 10px;
+  padding: 1.1rem 1.3rem;
+}
+.stat-card .num { font-family: var(--font-display); font-size: 1.8rem; color: var(--navy); display: block; }
+.stat-card .label { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+
+.admin-page h2 { font-family: var(--font-display); font-size: 1.2rem; margin-top: 2rem; }
+
+/* ---- Status / feedback ---- */
+[data-testid$="-error"] { color: var(--error); font-size: 0.88rem; margin-top: 0.3rem; }
+[data-testid$="-success"], [data-testid="booking-success"] { color: var(--sage); font-weight: 600; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
 }
 
-[data-testid="login-error"] {
-  color: var(--error);
-  font-size: 0.9rem;
-  margin-top: 0.75rem;
+@media (max-width: 640px) {
+  .room-card { flex-direction: column; }
+  .room-card .stub-divider { display: none; }
+  .room-card .stub-price { width: auto; border-top: 1px dashed var(--border); }
+  .nav-bar { flex-wrap: wrap; row-gap: 0.5rem; }
 }
