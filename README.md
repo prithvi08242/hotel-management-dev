@@ -168,7 +168,20 @@ role at runtime via OIDC, per run.
 
 ---
 
-## 9. Repo split
+## 9. Live pipeline dashboard
+
+`pipeline-flow.html` (lives in `hms-test`) — one page rendering the entire
+pipeline as a vertical flowchart, colored live (gray/amber/green/red) by
+polling the GitHub Actions API every 5 seconds across **both** repos, with
+per-job and per-step status and duration. Auto-deployed to GitHub Pages on
+every push to `main` in `hms-test` that touches this file
+(`.github/workflows/monitoring-ci.yml`).
+
+**Live URL:** https://prithvi08242.github.io/hotel-managment-test/
+
+---
+
+## 10. Repo split
 
 | Repo | Owns |
 |---|---|
@@ -177,3 +190,26 @@ role at runtime via OIDC, per run.
 
 `docker-compose.yml` is intentionally kept in both repos — update both if
 it changes.
+
+---
+
+## 11. Linting locally
+
+`backend/setup.cfg` sets flake8's line length to 88 (matching Black) and
+excludes `.venv/` from being scanned:
+
+```ini
+[flake8]
+max-line-length = 88
+exclude = .venv,venv,__pycache__,.git,build,dist
+```
+
+Run from inside `backend/`:
+```bash
+black --check .   # formatting
+flake8 .          # style/lint
+```
+
+Without this file, flake8 defaults to a 79-char limit and will also scan
+your virtual environment's installed packages — producing hundreds of
+irrelevant errors unrelated to your actual code.
