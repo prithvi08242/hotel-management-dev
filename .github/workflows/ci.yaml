@@ -152,3 +152,4 @@ jobs:
           context: ./frontend
           push: true
           tags: ${{ steps.ecr-login.outputs.registry }}/hms-frontend:${{ github.sha }}
+          
