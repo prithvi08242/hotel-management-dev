@@ -34,5 +34,11 @@ export default [
       "react-hooks/exhaustive-deps": "warn",
     },
   },
+  {
+    files: ["**/*.test.jsx", "**/*.test.js"],
+    languageOptions: {
+      globals: { ...globals.jest },
+    },
+  },
   { ignores: ["build/", "node_modules/", "dist/"] },
 ];
