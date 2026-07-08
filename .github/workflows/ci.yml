@@ -23,16 +23,13 @@ jobs:
         working-directory: backend
         run: pip install -r requirements.txt
 
-      - name: Linting Tools
-        run: pip install black flake8
-
       - name: Backend Black Linting
         working-directory: backend
         run: black --check .
-
+ 
       - name: Backend Flake8 Linting
         working-directory: backend
-        run: flake8 . --max-line-length=88
+        run: flake8 .
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -100,9 +97,6 @@ jobs:
             curl -sf http://localhost:8000/api/health && break
             sleep 2
           done
-
-      - name: Install test dependencies
-        run: pip install pytest requests
 
       - name: Run Backend Tests
         run: pytest tests/api --maxfail=1 --disable-warnings -q
