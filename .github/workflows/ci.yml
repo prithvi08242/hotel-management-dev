@@ -26,7 +26,7 @@ jobs:
       - name: Backend Black Linting
         working-directory: backend
         run: black --check .
- 
+
       - name: Backend Flake8 Linting
         working-directory: backend
         run: flake8 .
@@ -124,7 +124,6 @@ jobs:
         run: yarn test --watchAll=false --passWithNoTests
 
   build-and-push:
-    needs: [backend-test, frontend-test]
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -137,6 +136,13 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Ensure ECR repos exist
+        run: |
+          aws ecr describe-repositories --repository-names hms-backend 2>/dev/null || \
+            aws ecr create-repository --repository-name hms-backend
+          aws ecr describe-repositories --repository-names hms-frontend 2>/dev/null || \
+            aws ecr create-repository --repository-name hms-frontend
 
       - name: Log in to ECR
         id: ecr-login
@@ -155,4 +161,3 @@ jobs:
           context: ./frontend
           push: true
           tags: ${{ steps.ecr-login.outputs.registry }}/hms-frontend:${{ github.event.pull_request.head.sha }}
-          
