@@ -124,6 +124,7 @@ jobs:
         run: yarn test --watchAll=false --passWithNoTests
 
   build-and-push:
+    needs: [backend-test, frontend-test]
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -161,4 +162,3 @@ jobs:
           context: ./frontend
           push: true
           tags: ${{ steps.ecr-login.outputs.registry }}/hms-frontend:${{ github.event.pull_request.head.sha }}
-          
