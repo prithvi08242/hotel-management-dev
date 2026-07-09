@@ -12,7 +12,6 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
-      
 
   backend:
     image: hms-back-img
@@ -27,6 +26,6 @@ services:
   frontend:
     image: hms-front-img
     ports:
-      - "5173:5173"
+      - "5173:80"
     depends_on:
       - backend

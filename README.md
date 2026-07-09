@@ -8,7 +8,7 @@
 
 **One-time: build images**
 ```bash
-cd ../backend
+cd backend
 docker build -t hms-back-img .
 
 cd ../frontend
@@ -24,31 +24,20 @@ docker compose up
 ```
 Starts Postgres, runs migrations automatically, starts backend + frontend.
 
-Open `http://localhost:5173` (use the `Local:` URL Vite prints, not `Network:`).
+Open `http://localhost:5173` in your browser.
 
 **Test accounts:** `guest@w.com` / `guest` · `admin@w.com` / `admin`
 
----
-
-## Bring it down
-
-```bash
-docker compose down
-```
-
-Add `-v` to also wipe the Postgres data volume:
-```bash
-docker compose down -v
-```
-
----
 
 ## Linting
 
 **Backend:**
 ```bash
-cd ../backend
+cd backend
 source .venv/bin/activate
+```
+**Code Check:**
+```
 black --check .
 flake8 .
 ```
@@ -88,7 +77,23 @@ yarn test --watchAll=false
 
 ---
 
+## Bring it down if you want
+
+```bash
+docker compose down
+```
+
+Add `-v` to also wipe the Postgres data volume:
+```bash
+docker compose down -v
+```
+
+---
+
 ## CI pipeline overview (`.github/workflows/ci.yml`)
+
+Push the code to git
+cd .. 
 
 Triggered on every PR targeting `main`. Four jobs, in order:
 
@@ -204,9 +209,103 @@ This requires the role to have `AmazonEC2ContainerRegistryFullAccess`
 **Current account:** `424503481180`
 **Current role ARN:** `arn:aws:iam::424503481180:role/hms-role`
 
+**Action versions** (bumped for Node 24 support, no deprecation warnings):
+`aws-actions/configure-aws-credentials@v6.1.0`, `docker/build-push-action@v7`
+
 **Status:** full pipeline (`lint → backend-test + frontend-test → build-and-push`)
 confirmed passing end to end against this account.
 
+**Naming convention:** everything AWS/K8s-side uses the `hms-` prefix —
+`hms-backend`/`hms-frontend` (ECR), `hms-role` (IAM), `hms-cluster` (EKS),
+`hms-nodes` (nodegroup).
+
 ---
 
-*Next up: deploy-staging (EKS) — in progress.*
+*Next up: staging deploy — added once done.*
+
+---
+
+## EKS cluster setup (what actually worked)
+
+```bash
+# 1. Create the cluster (correct instance type + nodes together, one command)
+eksctl create cluster \
+  --name hms-cluster \
+  --region us-east-1 \
+  --nodegroup-name hms-nodes \
+  --node-type t3.small \
+  --nodes 2 \
+  --nodes-min 1 \
+  --nodes-max 3 \
+  --managed
+
+# 2. Immediately confirm all 3 core addons exist before doing anything else
+aws eks list-addons --cluster-name hms-cluster
+# must show: coredns, kube-proxy, vpc-cni
+# if vpc-cni is missing, create it manually before proceeding:
+#   aws eks create-addon --cluster-name hms-cluster --addon-name vpc-cni
+
+# 3. Confirm nodes are Ready
+aws eks update-kubeconfig --name hms-cluster --region us-east-1
+kubectl get nodes
+```
+
+**Key things that matter:**
+- Use a **Free Tier-eligible instance type** (`t3.small` — check with
+  `aws ec2 describe-instance-types --filters "Name=free-tier-eligible,Values=true"`).
+  Non-eligible types on a new AWS account fail silently for a long time
+  before finally erroring.
+- `eksctl`'s own "waiting for CloudFormation stack" messages can time out
+  even when the resource is actually still creating successfully in the
+  background — always verify directly with `aws eks describe-nodegroup`
+  rather than trusting eksctl's client-side timeout.
+- Confirm `vpc-cni` specifically exists right after cluster creation —
+  it's what allows nodes to become `Ready` at all.
+
+## Apply the K8s manifests
+
+```bash
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/postgres.yaml
+kubectl apply -f k8s/backend.yaml
+kubectl apply -f k8s/frontend.yaml
+
+kubectl get pods -n staging
+kubectl get svc frontend -n staging   # EXTERNAL-IP is the live URL
+```
+
+## Roll out a new image after CI builds one
+
+```bash
+aws ecr describe-images --repository-name hms-backend --query "sort_by(imageDetails,& imagePushedAt)[-1].imageTags[0]" --output text
+aws ecr describe-images --repository-name hms-frontend --query "sort_by(imageDetails,& imagePushedAt)[-1].imageTags[0]" --output text
+
+kubectl set image deployment/backend backend=424503481180.dkr.ecr.us-east-1.amazonaws.com/hms-backend:<sha> -n staging
+kubectl set image deployment/frontend frontend=424503481180.dkr.ecr.us-east-1.amazonaws.com/hms-frontend:<sha> -n staging
+
+kubectl get pods -n staging
+```
+
+## Tear down when done (avoid ongoing cost)
+
+```bash
+eksctl delete cluster --region=us-east-1 --name=hms-cluster
+```
+
+Then confirm nothing costly is left behind — NAT gateways and Elastic IPs
+sometimes survive a cluster delete if there was an earlier partial/failed
+attempt:
+```bash
+aws ec2 describe-nat-gateways --query "NatGateways[?State!='deleted'].[NatGatewayId,State]" --output table
+aws ec2 describe-addresses --query "Addresses[].[PublicIp,AssociationId]" --output table
+```
+Delete anything that shows up:
+```bash
+aws ec2 delete-nat-gateway --nat-gateway-id <id>
+aws ec2 release-address --allocation-id <id>
+```
+
+Confirm cost:
+```bash
+aws ce get-cost-and-usage --time-period Start=$(date -v1d +%Y-%m-%d),End=$(date +%Y-%m-%d) --granularity MONTHLY --metrics "UnblendedCost"
+```

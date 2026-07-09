@@ -1,4 +1,4 @@
-\apiVersion: apps/v1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: frontend
@@ -15,25 +15,24 @@ spec:
     spec:
       containers:
         - name: frontend
+          # Placeholder — overwritten by `kubectl set image` in the
+          # deploy-staging CI job.
           image: 424503481180.dkr.ecr.us-east-1.amazonaws.com/hms-frontend:latest
           ports:
-            - containerPort: 5173
-          env:
-            - name: VITE_BACKEND_URL
-              value: "http://backend:8000"
+            - containerPort: 80
           readinessProbe:
             httpGet:
               path: /
-              port: 5173
+              port: 80
             initialDelaySeconds: 5
             periodSeconds: 10
           resources:
             requests:
               cpu: "100m"
-              memory: "128Mi"
+              memory: "64Mi"
             limits:
               cpu: "300m"
-              memory: "256Mi"
+              memory: "128Mi"
 ---
 apiVersion: v1
 kind: Service
@@ -45,5 +44,5 @@ spec:
     app: frontend
   ports:
     - port: 80
-      targetPort: 5173
+      targetPort: 80
   type: LoadBalancer
