@@ -1,215 +1,212 @@
-# Wayfarer — Hotel Management System
+# Wayfarer — Setup & Pipeline Guide
 
-A portfolio project pairing a real hotel booking application with a full
-SDET/DevOps pipeline, built incrementally across two repos.
-
----
-
-## 1. What's built
-
-| Feature | Status |
-|---|---|
-| Login | ✅ |
-| Signup | ✅ |
-| Room search & listing | ✅ |
-| Booking creation / cancellation | ✅ |
-| Admin dashboard | ✅ |
-| EKS cluster + staging deploy | ⬜ |
-| E2E wired into CI against real staging URL | ⬜ |
-| Go/no-go gate | ⬜ |
-| Production deploy (HA, self-healing) | ⬜ |
-| Custom domain | ⬜ |
+*Living document — sections added as each part of the pipeline is completed.*
 
 ---
 
-## 2. Stack
+## Run locally
 
-- **Backend:** FastAPI, SQLAlchemy, Alembic migrations, PostgreSQL
-- **Frontend:** React + Vite + React Router
-- **Auth:** JWT, sent as `Authorization: Bearer <token>`
-- **CI/CD:** GitHub Actions, AWS ECR (via OIDC, no stored keys)
-
----
-
-## 3. Backend reference
-
-Schema is migration-managed (`backend/alembic/versions/` — three
-migrations: users, rooms, bookings).
-
-| Endpoint | Auth | Notes |
-|---|---|---|
-| `GET /api/health` | none | health check |
-| `POST /api/signup` | none | creates a guest account, returns JWT |
-| `POST /api/login` | none | returns JWT + user info |
-| `GET /api/rooms` | none | filter by type, price, occupancy, dates |
-| `POST /api/bookings` | required | rejects overlapping dates |
-| `GET /api/bookings/me` | required | current user's bookings |
-| `DELETE /api/bookings/{id}` | required (owner) | cancels a booking |
-| `GET /api/admin/bookings` | required (admin) | all bookings |
-| `POST /api/admin/rooms` | required (admin) | add a room |
-
----
-
-## 4. Frontend reference
-
-Ticket-stub styled room cards, persistent nav bar. Every interactive
-element carries a `data-testid` for E2E automation.
-
-| Route | Page | Protected |
-|---|---|---|
-| `/login` | Sign in | no |
-| `/signup` | Create account | no |
-| `/rooms` | Search & browse rooms | no |
-| `/book/:roomId` | Confirm a booking | yes |
-| `/my-bookings` | View / cancel bookings | yes |
-| `/admin` | Stats, add rooms, view all bookings | yes (admin) |
-
----
-
-## 5. Seeded test accounts
-
-| Email | Password | Role |
-|---|---|---|
-| `guest@w.com` | `guest` | guest |
-| `admin@w.com` | `admin` | admin |
-
----
-
-## 6. Local setup
-
-### Image names (consistent everywhere)
-- `hms-back-img` — backend
-- `hms-front-img` — frontend
-
-*(ECR uses different names — `hms-backend` / `hms-frontend` — that's fine;
-`docker-compose.yml` never talks to ECR directly, only CI's
-`build-and-push` job does.)*
-
-### One-time: build images
+**One-time: build images**
 ```bash
-cd backend
+cd ../backend
 docker build -t hms-back-img .
 
 cd ../frontend
 docker build -t hms-front-img .
 ```
 
-### Run everything — one command
+**Start everything**
+
+`docker-compose.yml` lives at the repo root:
 ```bash
+cd ..
 docker compose up
 ```
-This starts Postgres, runs `alembic upgrade head` automatically inside the
-backend container before it starts, and starts the frontend. No manual
-migration step needed.
+Starts Postgres, runs migrations automatically, starts backend + frontend.
 
-Open `http://localhost:5173` (or whichever port Vite's log shows — always
-use the `Local:` URL, never the `Network:` one from your browser).
+Open `http://localhost:5173` (use the `Local:` URL Vite prints, not `Network:`).
 
-### Verify end to end
-1. Sign up, or log in with a seeded account
-2. Search rooms, book one
-3. View it under **My bookings**, cancel it
-4. Log in as admin, confirm it shows in the **Admin dashboard**
+**Test accounts:** `guest@w.com` / `guest` · `admin@w.com` / `admin`
 
-### Shutting down
+---
+
+## Bring it down
+
 ```bash
-docker compose down          # stop containers
-docker compose down -v       # also wipe Postgres data
+docker compose down
 ```
 
-### Genuine clean slate (only if something's broken)
+Add `-v` to also wipe the Postgres data volume:
 ```bash
 docker compose down -v
-lsof -ti:8000 | xargs kill -9 2>/dev/null
-lsof -ti:5173 | xargs kill -9 2>/dev/null
-lsof -ti:5174 | xargs kill -9 2>/dev/null
-lsof -ti:5432 | xargs kill -9 2>/dev/null
-
-cd backend && docker build --no-cache -t hms-back-img . && cd ..
-cd frontend && docker build --no-cache -t hms-front-img . && cd ..
-
-docker compose up
 ```
 
 ---
 
-## 7. CI pipeline (`.github/workflows/ci.yml`)
+## Linting
 
-Triggered on `pull_request` → `main` — this is the go/no-go gate before merge:
-
-```
-lint (black, flake8, eslint)
-  ↓
-backend-test (Postgres service + alembic upgrade + pytest)
-frontend-test (Jest)
-  ↓
-build-and-push (assumes AWS role via OIDC, pushes to ECR)
-```
-
-All four jobs must pass before merge is allowed.
-
----
-
-## 8. AWS resources
-
-- **ECR repos:** `hms-backend`, `hms-frontend`
-  (`442729101598.dkr.ecr.us-east-1.amazonaws.com`)
-- **IAM OIDC provider:** trusts `token.actions.githubusercontent.com`,
-  audience `sts.amazonaws.com`
-- **IAM role:** `hms-role`
-  (`arn:aws:iam::442729101598:role/hms-role`), scoped to
-  `prithvi08242/hotel-management-dev`, permission
-  `AmazonEC2ContainerRegistryPowerUser`
-- **GitHub secrets/vars set in this repo:** `AWS_ROLE_ARN` (secret),
-  `AWS_REGION` (variable)
-
-No long-lived AWS keys are stored anywhere — GitHub Actions assumes the
-role at runtime via OIDC, per run.
-
----
-
-## 9. Live pipeline dashboard
-
-`pipeline-flow.html` (lives in `hms-test`) — one page rendering the entire
-pipeline as a vertical flowchart, colored live (gray/amber/green/red) by
-polling the GitHub Actions API every 5 seconds across **both** repos, with
-per-job and per-step status and duration. Auto-deployed to GitHub Pages on
-every push to `main` in `hms-test` that touches this file
-(`.github/workflows/monitoring-ci.yml`).
-
-**Live URL:** https://prithvi08242.github.io/hotel-managment-test/
-
----
-
-## 10. Repo split
-
-| Repo | Owns |
-|---|---|
-| `hms-dev` (this repo) | Application code, Dockerfiles, CI pipeline |
-| `hms-test` | Playwright E2E specs, live pipeline dashboard |
-
-`docker-compose.yml` is intentionally kept in both repos — update both if
-it changes.
-
----
-
-## 11. Linting locally
-
-`backend/setup.cfg` sets flake8's line length to 88 (matching Black) and
-excludes `.venv/` from being scanned:
-
-```ini
-[flake8]
-max-line-length = 88
-exclude = .venv,venv,__pycache__,.git,build,dist
-```
-
-Run from inside `backend/`:
+**Backend:**
 ```bash
-black --check .   # formatting
-flake8 .          # style/lint
+cd ../backend
+source .venv/bin/activate
+black --check .
+flake8 .
+```
+If either command says "command not found," dependencies aren't installed
+in this venv yet — run `pip install -r requirements.txt` and retry.
+
+`source .venv/bin/activate` only applies to the current terminal session —
+every time you open a new terminal/tab, run it again before using
+`black`/`flake8`/`pytest`/`uvicorn`.
+
+Uses `backend/setup.cfg` (88-char line length, excludes `.venv`).
+
+**Frontend:**
+```bash
+cd ../frontend
+yarn eslint src --max-warnings=0
 ```
 
-Without this file, flake8 defaults to a 79-char limit and will also scan
-your virtual environment's installed packages — producing hundreds of
-irrelevant errors unrelated to your actual code.
+---
+
+## Testing
+
+**Backend** (app must be running):
+```bash
+cd ../backend
+source .venv/bin/activate
+pytest tests/api -q
+```
+Remember: `source .venv/bin/activate` is per-terminal-session — re-run it
+if you opened a new terminal since last activating.
+
+**Frontend:**
+```bash
+cd ../frontend
+yarn test --watchAll=false
+```
+
+---
+
+## CI pipeline overview (`.github/workflows/ci.yml`)
+
+Triggered on every PR targeting `main`. Four jobs, in order:
+
+```
+lint → backend-test + frontend-test (parallel) → build-and-push
+```
+
+All four must pass before merge.
+
+| Job | Purpose |
+|---|---|
+| `lint` | Runs `black`, `flake8` (backend) and `eslint` (frontend). Nothing else starts until this passes. |
+| `backend-test` | Spins up a real Postgres container, runs migrations, starts the app, runs `pytest` against real endpoints. |
+| `frontend-test` | Runs Jest unit tests (component-level, mocked API — no backend needed). |
+| `build-and-push` | Assumes AWS role via OIDC (no stored keys), creates ECR repos if missing, builds both Docker images, pushes them tagged with the exact commit SHA. |
+
+**Note:** while testing AWS setup, `lint`/`backend-test`/`frontend-test` were
+temporarily disabled (`if: false`) and `build-and-push`'s `needs:` was
+removed, so it could run standalone. Revert both once AWS is confirmed
+working — no `if: false` anywhere, `needs: [backend-test, frontend-test]`
+restored on `build-and-push` — so the real merge gate is enforced again.
+
+---
+
+## AWS bootstrap (one-time, outside CI)
+
+**Prerequisite:** `aws configure` must already be set up with valid
+credentials (Access Key ID + Secret Access Key from an IAM user with
+sufficient permissions, e.g. AdministratorAccess) before running any of
+the commands below — the AWS CLI has nothing to authenticate with otherwise.
+```bash
+aws configure
+```
+Confirm it worked:
+```bash
+aws sts get-caller-identity
+```
+
+**Also required: GitHub CLI (`gh`)**, for setting secrets/variables via
+CLI instead of the console UI.
+```bash
+brew install gh
+gh auth login
+```
+Follow the prompts: choose **GitHub.com** → **HTTPS** → **Login with a web
+browser**. It shows a one-time code (e.g. `992B-9442`) and says "Press
+Enter to open browser" — press **Enter** (don't Ctrl+C). A browser tab
+opens to `github.com/login/device` — type that exact code there and
+authorize. Terminal confirms success once approved in the browser.
+
+Run once, before `build-and-push` can work. CI cannot do this itself — it
+needs the role to already exist to authenticate at all.
+
+```bash
+# 1. OIDC provider (trusts GitHub Actions)
+aws iam create-open-id-connect-provider \
+  --url https://token.actions.githubusercontent.com \
+  --client-id-list sts.amazonaws.com \
+  --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1
+
+# 2. Trust policy file, scoped to this repo
+cat > trust-policy.json << 'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::<ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+        },
+        "StringLike": {
+          "token.actions.githubusercontent.com:sub": "repo:prithvi08242/hotel-management-dev:*"
+        }
+      }
+    }
+  ]
+}
+EOF
+
+# 3. Create the role
+aws iam create-role \
+  --role-name hms-role \
+  --assume-role-policy-document file://trust-policy.json
+
+# 4. Attach ECR permission (FullAccess, not PowerUser — CI needs to
+# create repos on a fresh account, and PowerUser deliberately excludes
+# CreateRepository)
+aws iam attach-role-policy \
+  --role-name hms-role \
+  --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess
+
+# 5. Get the role ARN
+aws iam get-role --role-name hms-role --query "Role.Arn" --output text
+
+# 6. Set GitHub secrets (paste the ARN from step 5)
+gh secret set AWS_ROLE_ARN --body "arn:aws:iam::<ACCOUNT_ID>:role/hms-role"
+gh variable set AWS_REGION --body "us-east-1"
+```
+
+Replace `<ACCOUNT_ID>` with your actual AWS account ID (`aws sts get-caller-identity`).
+
+**ECR repos** (`hms-backend`, `hms-frontend`) are created idempotently
+*inside* CI's `build-and-push` job (`Ensure ECR repos exist` step) — no
+manual `aws ecr create-repository` needed, even on a brand-new AWS account.
+This requires the role to have `AmazonEC2ContainerRegistryFullAccess`
+(see step 4 above), not just `PowerUser`.
+
+**Current account:** `424503481180`
+**Current role ARN:** `arn:aws:iam::424503481180:role/hms-role`
+
+**Status:** full pipeline (`lint → backend-test + frontend-test → build-and-push`)
+confirmed passing end to end against this account.
+
+---
+
+*Next up: deploy-staging (EKS) — in progress.*
