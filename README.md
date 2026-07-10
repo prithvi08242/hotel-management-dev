@@ -129,6 +129,14 @@ restored on `build-and-push` — so the real merge gate is enforced again.
 
 ## AWS bootstrap (one-time, outside CI)
 
+**Permissions needed, at a glance** (details/reasoning at each step below):
+
+| Where | Permission | Why this one specifically |
+|---|---|---|
+| `hms-role` IAM policy | `AmazonEC2ContainerRegistryFullAccess` | Not `PowerUser` — CI creates ECR repos on a fresh account, and `PowerUser` deliberately excludes `CreateRepository` |
+| `hms-role` EKS access policy | `AmazonEKSClusterAdminPolicy` | Not `AmazonEKSAdminPolicy` — that one maps to K8s `admin` role (namespace-scoped, can't create Namespaces); `ClusterAdminPolicy` maps to `cluster-admin` (genuinely unrestricted) |
+| Local IAM user (`prithvi-cli`) | `AdministratorAccess` | Bootstrapping the above two — needs to create roles/policies/access-entries itself |
+
 **Prerequisite:** `aws configure` must already be set up with valid
 credentials (Access Key ID + Secret Access Key from an IAM user with
 sufficient permissions, e.g. AdministratorAccess) before running any of
@@ -307,8 +315,26 @@ aws eks create-access-entry \
 aws eks associate-access-policy \
   --cluster-name hms-cluster \
   --principal-arn arn:aws:iam::424503481180:role/hms-role \
-  --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSAdminPolicy \
+  --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy \
   --access-scope type=cluster
+```
+
+**⚠️ Permission required — read this carefully, easy to get wrong:**
+Use **`AmazonEKSClusterAdminPolicy`**, NOT `AmazonEKSAdminPolicy` — the
+names are almost identical but map to very different Kubernetes
+permissions:
+
+| Policy | Maps to K8s ClusterRole | Can create Namespaces? |
+|---|---|---|
+| `AmazonEKSAdminPolicy` | `admin` | ❌ No — namespace-scoped only, even with `access-scope type=cluster` |
+| `AmazonEKSClusterAdminPolicy` | `cluster-admin` | ✅ Yes — genuinely unrestricted |
+
+Using the wrong one causes exactly this error, which looks like an access
+entry problem but isn't:
+```
+Error from server (Forbidden): namespaces is forbidden: User
+"...assumed-role/hms-role/GitHubActions" cannot create resource
+"namespaces" in API group "" at the cluster scope
 ```
 
 Needed again any time the cluster is recreated (access entries don't
