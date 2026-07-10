@@ -28,6 +28,7 @@ Open `http://localhost:5173` in your browser.
 
 **Test accounts:** `guest@w.com` / `guest` · `admin@w.com` / `admin`
 
+---
 
 ## Linting
 
@@ -37,7 +38,7 @@ cd backend
 source .venv/bin/activate
 ```
 **Code Check:**
-```
+```bash
 black --check .
 flake8 .
 ```
@@ -90,10 +91,18 @@ docker compose down -v
 
 ---
 
-## CI pipeline overview (`.github/workflows/ci.yml`)
+## Push your changes
 
-Push the code to git
-cd .. 
+```bash
+cd ..
+git add .
+git commit -m "your message"
+git push
+```
+
+---
+
+## CI pipeline overview (`.github/workflows/ci.yml`)
 
 Triggered on every PR targeting `main`. Four jobs, in order:
 
@@ -221,10 +230,6 @@ confirmed passing end to end against this account.
 
 ---
 
-*Next up: staging deploy — added once done.*
-
----
-
 ## EKS cluster setup (what actually worked)
 
 ```bash
@@ -265,13 +270,12 @@ kubectl get nodes
 ## Apply the K8s manifests
 
 ```bash
-kubectl apply -f k8s/namespace.yaml
-kubectl apply -f k8s/postgres.yaml
-kubectl apply -f k8s/backend.yaml
-kubectl apply -f k8s/frontend.yaml
+kubectl apply -f k8s/namespace.yml
+kubectl apply -f k8s/postgres.yml
+kubectl apply -f k8s/backend.yml
+kubectl apply -f k8s/frontend.yml
 
 kubectl get pods -n staging
-kubectl get svc frontend -n staging   # EXTERNAL-IP is the live URL
 ```
 
 ## Roll out a new image after CI builds one
@@ -280,11 +284,106 @@ kubectl get svc frontend -n staging   # EXTERNAL-IP is the live URL
 aws ecr describe-images --repository-name hms-backend --query "sort_by(imageDetails,& imagePushedAt)[-1].imageTags[0]" --output text
 aws ecr describe-images --repository-name hms-frontend --query "sort_by(imageDetails,& imagePushedAt)[-1].imageTags[0]" --output text
 
+# Replace <sha> with above output
 kubectl set image deployment/backend backend=424503481180.dkr.ecr.us-east-1.amazonaws.com/hms-backend:<sha> -n staging
 kubectl set image deployment/frontend frontend=424503481180.dkr.ecr.us-east-1.amazonaws.com/hms-frontend:<sha> -n staging
 
 kubectl get pods -n staging
+
+kubectl get svc frontend -n staging   # EXTERNAL-IP is the live URL Access the application
 ```
+
+## Grant CI role access inside the cluster (one-time, per cluster)
+
+IAM permissions and EKS cluster access are separate systems — `hms-role`
+can push to ECR, but has no permission to run `kubectl` against the
+cluster until explicitly granted:
+
+```bash
+aws eks create-access-entry \
+  --cluster-name hms-cluster \
+  --principal-arn arn:aws:iam::424503481180:role/hms-role
+
+aws eks associate-access-policy \
+  --cluster-name hms-cluster \
+  --principal-arn arn:aws:iam::424503481180:role/hms-role \
+  --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSAdminPolicy \
+  --access-scope type=cluster
+```
+
+Needed again any time the cluster is recreated (access entries don't
+survive a cluster delete).
+
+## `deploy-staging` CI job (automates everything above)
+
+Add to `ci.yml`, after `build-and-push`. Requires `build-and-push` to
+expose its ECR registry URL as a job output first:
+
+```yaml
+build-and-push:
+  ...
+  outputs:
+    registry: ${{ steps.ecr-login.outputs.registry }}
+```
+
+```yaml
+deploy-staging:
+  needs: build-and-push
+  runs-on: ubuntu-latest
+  permissions:
+    id-token: write
+    contents: read
+  steps:
+    - uses: actions/checkout@v6
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v6.1.0
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+        aws-region: ${{ vars.AWS_REGION }}
+
+    - name: Update kubeconfig
+      run: aws eks update-kubeconfig --name hms-cluster --region ${{ vars.AWS_REGION }}
+
+    - name: Apply manifests (structure/drift safety)
+      run: |
+        kubectl apply -f k8s/namespace.yml
+        kubectl apply -f k8s/postgres.yml
+        kubectl apply -f k8s/backend.yml
+        kubectl apply -f k8s/frontend.yml
+
+    - name: Roll out new images
+      run: |
+        kubectl set image deployment/backend \
+          backend=${{ needs.build-and-push.outputs.registry }}/hms-backend:${{ github.event.pull_request.head.sha }} \
+          -n staging
+        kubectl set image deployment/frontend \
+          frontend=${{ needs.build-and-push.outputs.registry }}/hms-frontend:${{ github.event.pull_request.head.sha }} \
+          -n staging
+
+    - name: Wait for rollout
+      run: |
+        kubectl rollout status deployment/backend -n staging --timeout=180s
+        kubectl rollout status deployment/frontend -n staging --timeout=180s
+
+    - name: Rollback on failed rollout
+      if: failure()
+      run: |
+        kubectl rollout undo deployment/backend -n staging
+        kubectl rollout undo deployment/frontend -n staging
+
+    - name: Print staging URL
+      run: kubectl get svc frontend -n staging -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+```
+
+After this, every merged PR automatically builds, pushes, and deploys to
+staging — no manual `kubectl set image` ever needed again.
+
+---
+
+*Next up: E2E tests wired into CI against the real staging URL.*
+
+---
 
 ## Tear down when done (avoid ongoing cost)
 
@@ -303,6 +402,15 @@ Delete anything that shows up:
 ```bash
 aws ec2 delete-nat-gateway --nat-gateway-id <id>
 aws ec2 release-address --allocation-id <id>
+```
+
+**Optional — delete ECR repos/images too** (not required for cost, since
+ECR storage is essentially free at this scale, but included for a fully
+clean slate). CI's "Ensure ECR repos exist" step recreates them
+automatically on the next run, so this is always safe to do:
+```bash
+aws ecr delete-repository --repository-name hms-backend --force
+aws ecr delete-repository --repository-name hms-frontend --force
 ```
 
 Confirm cost:
