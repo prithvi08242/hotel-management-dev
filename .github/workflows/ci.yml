@@ -23,16 +23,13 @@ jobs:
         working-directory: backend
         run: pip install -r requirements.txt
 
-      - name: Linting Tools
-        run: pip install black flake8
-
       - name: Backend Black Linting
         working-directory: backend
         run: black --check .
 
       - name: Backend Flake8 Linting
         working-directory: backend
-        run: flake8 . --max-line-length=88
+        run: flake8 .
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -101,9 +98,6 @@ jobs:
             sleep 2
           done
 
-      - name: Install test dependencies
-        run: pip install pytest requests
-
       - name: Run Backend Tests
         run: pytest tests/api --maxfail=1 --disable-warnings -q
 
@@ -135,21 +129,30 @@ jobs:
     permissions:
       id-token: write
       contents: read
+    outputs:
+      registry: ${{ steps.ecr-login.outputs.registry }}
     steps:
       - uses: actions/checkout@v6
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Ensure ECR repos exist
+        run: |
+          aws ecr describe-repositories --repository-names hms-backend 2>/dev/null || \
+            aws ecr create-repository --repository-name hms-backend
+          aws ecr describe-repositories --repository-names hms-frontend 2>/dev/null || \
+            aws ecr create-repository --repository-name hms-frontend
 
       - name: Log in to ECR
         id: ecr-login
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build & push backend
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./backend
           push: true
@@ -161,4 +164,164 @@ jobs:
           context: ./frontend
           push: true
           tags: ${{ steps.ecr-login.outputs.registry }}/hms-frontend:${{ github.event.pull_request.head.sha }}
-          
+
+  deploy-staging:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.1.0
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name hms-cluster --region ${{ vars.AWS_REGION }}
+
+      - name: Apply manifests (structure/drift safety)
+        run: |
+          kubectl apply -f k8s/namespace.yml
+          kubectl apply -f k8s/postgres.yml
+          kubectl apply -f k8s/backend.yml
+          kubectl apply -f k8s/frontend.yml
+
+      - name: Roll out new images
+        run: |
+          kubectl set image deployment/backend \
+            backend=${{ needs.build-and-push.outputs.registry }}/hms-backend:${{ github.event.pull_request.head.sha }} \
+            -n staging
+          kubectl set image deployment/frontend \
+            frontend=${{ needs.build-and-push.outputs.registry }}/hms-frontend:${{ github.event.pull_request.head.sha }} \
+            -n staging
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/backend -n staging --timeout=180s
+          kubectl rollout status deployment/frontend -n staging --timeout=180s
+
+      - name: Rollback on failed rollout
+        if: failure()
+        run: |
+          kubectl rollout undo deployment/backend -n staging
+          kubectl rollout undo deployment/frontend -n staging
+
+      - name: Print staging URL
+        run: kubectl get svc frontend -n staging -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+
+  e2e:
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout Playwright specs from hms-test
+        uses: actions/checkout@v6
+        with:
+          repository: prithvi08242/hotel-managment-test
+          path: e2e-specs
+ 
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.1.0
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+ 
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name hms-cluster --region ${{ vars.AWS_REGION }}
+ 
+      - name: Get staging URL
+        id: staging-url
+        run: |
+          URL=$(kubectl get svc frontend -n staging -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          echo "url=http://$URL" >> "$GITHUB_OUTPUT"
+ 
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+ 
+      - name: Install Playwright
+        working-directory: e2e-specs
+        run: |
+          yarn install --frozen-lockfile
+          npx playwright install --with-deps chromium
+ 
+      - name: Run E2E tests against staging
+        working-directory: e2e-specs
+        env:
+          BASE_URL: ${{ steps.staging-url.outputs.url }}
+        run: npx playwright test
+ 
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: playwright-report
+          path: e2e-specs/playwright-report/
+          retention-days: 7
+ 
+  go-no-go:
+    needs: e2e
+    runs-on: ubuntu-latest
+    steps:
+      - name: Go decision
+        run: echo "✅ GO — E2E passed against staging. Safe to merge."
+
+  deploy-production:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production   # requires manual approval - set up reviewers in repo settings
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.1.0
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Log in to ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name hms-cluster --region ${{ vars.AWS_REGION }}
+
+      - name: Apply production manifests
+        run: |
+          kubectl apply -f k8s/production/namespace.yml
+          kubectl apply -f k8s/production/postgres.yml
+          kubectl apply -f k8s/production/backend.yml
+          kubectl apply -f k8s/production/frontend.yml
+
+      - name: Roll out release image
+        run: |
+          kubectl set image deployment/backend \
+            backend=${{ steps.ecr-login.outputs.registry }}/hms-backend:${{ github.sha }} \
+            -n production
+          kubectl set image deployment/frontend \
+            frontend=${{ steps.ecr-login.outputs.registry }}/hms-frontend:${{ github.sha }} \
+            -n production
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/backend -n production --timeout=300s
+          kubectl rollout status deployment/frontend -n production --timeout=300s
+
+      - name: Rollback on failed rollout
+        if: failure()
+        run: |
+          kubectl rollout undo deployment/backend -n production
+          kubectl rollout undo deployment/frontend -n production
+
+      - name: Print production URL
+        run: kubectl get svc frontend -n production -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
