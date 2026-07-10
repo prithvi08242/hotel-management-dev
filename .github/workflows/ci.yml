@@ -305,13 +305,21 @@ jobs:
           kubectl apply -f k8s/production/backend.yml
           kubectl apply -f k8s/production/frontend.yml
 
+      - name: Get latest built image tag
+        id: latest-tag
+        run: |
+          BACKEND_TAG=$(aws ecr describe-images --repository-name hms-backend --query "sort_by(imageDetails,& imagePushedAt)[-1].imageTags[0]" --output text)
+          FRONTEND_TAG=$(aws ecr describe-images --repository-name hms-frontend --query "sort_by(imageDetails,& imagePushedAt)[-1].imageTags[0]" --output text)
+          echo "backend_tag=$BACKEND_TAG" >> "$GITHUB_OUTPUT"
+          echo "frontend_tag=$FRONTEND_TAG" >> "$GITHUB_OUTPUT"
+
       - name: Roll out release image
         run: |
           kubectl set image deployment/backend \
-            backend=${{ steps.ecr-login.outputs.registry }}/hms-backend:${{ github.sha }} \
+            backend=${{ steps.ecr-login.outputs.registry }}/hms-backend:${{ steps.latest-tag.outputs.backend_tag }} \
             -n production
           kubectl set image deployment/frontend \
-            frontend=${{ steps.ecr-login.outputs.registry }}/hms-frontend:${{ github.sha }} \
+            frontend=${{ steps.ecr-login.outputs.registry }}/hms-frontend:${{ steps.latest-tag.outputs.frontend_tag }} \
             -n production
 
       - name: Wait for rollout
